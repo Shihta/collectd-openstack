@@ -31,6 +31,7 @@
 #
 import collectd
 import traceback
+from keystoneclient.v3 import client as KeystoneClient
 
 import base
 
@@ -39,8 +40,44 @@ class KeystonePlugin(base.Base):
     def __init__(self):
         base.Base.__init__(self)
         self.prefix = 'openstack-keystone'
+        self.keystone = None
 
     def get_stats(self):
+        if self.keystone_version == 'v2':
+            return self._v2_get_stats()
+        else:
+            return self._v3_get_stats()
+
+    def _get_keystone(self):
+        if self.keystone is None:
+            if self.region is None:
+                self.keystone = KeystoneClient.Client(session=self.get_session())
+            else:
+                self.keystone = KeystoneClient.Client(session=self.get_session(), region_name=self.region)
+        return self.keystone
+
+    def _v3_get_stats(self):
+        """Retrieves stats from keystone via API-v3"""
+        keystone = self._get_keystone()
+        data = { self.prefix: { 'totals': {
+            'projects': 0, 'users': 0, 'roles': 0, 'services': 0, 'endpoints': 0
+        } } }
+
+        for item in data[self.prefix]['totals'].keys():
+            data[self.prefix]['totals'][item] = {
+                'count': len(keystone.__getattribute__(item).list())
+            }
+
+        if getattr(self, 'notenants') == False:
+            project_list = keystone.projects.list()
+            for project in project_list:
+                k = "project-%s" % project.name
+                data[self.prefix][k] = { 'users': {
+                    'count': len(keystone.users.list(default_project=project.id))
+                    } }
+        return data
+
+    def _v2_get_stats(self):
         """Retrieves stats from keystone"""
         keystone = self.get_keystone()
 

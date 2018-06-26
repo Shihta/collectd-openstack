@@ -27,6 +27,8 @@
 #   http://collectd.org/documentation/manpages/collectd-python.5.shtml
 #
 from keystoneclient.v2_0 import Client as KeystoneClient
+from keystoneauth1.identity import v3
+from keystoneauth1 import session
 
 import collectd
 import datetime
@@ -45,6 +47,20 @@ class Base(object):
         self.interval = 60.0
         self.notenants = False
         self.region = None
+        self.keystone_version = 'v2'
+        self.project_name = 'openstack'
+        self.project_domain_id = 'default'
+        self.user_domain_id = 'default'
+        self.session = None
+
+    def get_session(self):
+        if self.session is None:
+            auth = v3.Password(
+                username=self.username, password=self.password,
+                project_name=self.project_name, auth_url=self.auth_url,
+                project_domain_id=self.project_domain_id, user_domain_id=self.user_domain_id)
+            self.session = session.Session(auth=auth)
+        return self.session
 
     def get_keystone(self):
         """Returns a Keystone.Client instance."""
@@ -93,6 +109,14 @@ class Base(object):
                 self.notenants = True
             elif node.key == 'Region':
                 self.region = node.values[0]
+            elif node.key == 'ProjectName':
+                self.project_name = node.values[0]
+            elif node.key == 'KeystoneVersion':
+                self.keystone_version = node.values[0]
+            elif node.key == 'ProjectDomain':
+                self.project_domain_id = node.values[0]
+            elif node.key == 'UserDomain':
+                self.user_domain_id = node.values[0]
             else:
                 collectd.warning("%s: unknown config key: %s" % (self.prefix, node.key))
 
