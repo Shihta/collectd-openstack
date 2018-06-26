@@ -31,6 +31,7 @@
 #
 from novaclient.client import Client as NovaClient
 from novaclient import exceptions
+from keystoneclient.v3 import client as KeystoneClient
 
 import collectd
 import traceback
@@ -42,8 +43,66 @@ class NovaPlugin(base.Base):
     def __init__(self):
         base.Base.__init__(self)
         self.prefix = 'openstack-nova'
+        self.keystone = None
+        self.nova = None
 
     def get_stats(self):
+        if self.keystone_version == 'v2':
+            return self._v2_get_stats()
+        else:
+            return self._v3_get_stats()
+
+    def _get_keystone(self):
+        if self.keystone is None:
+            if self.region is None:
+                self.keystone = KeystoneClient.Client(session=self.get_session())
+            else:
+                self.keystone = KeystoneClient.Client(session=self.get_session(), region_name=self.region)
+        return self.keystone
+
+    def _get_nova(self):
+        if self.nova is None:
+            if self.region is None:
+                self.nova = NovaClient(2, session=self.get_session())
+            else:
+                self.nova = NovaClient(2, session=self.get_session(), region_name=self.region)
+        return self.nova
+
+    def _v3_get_stats(self):
+        data = { self.prefix: {} }
+        keystone = self._get_keystone()
+        nova = self._get_nova()
+
+        if self.notenants == False:
+            project_list = keystone.projects.list()
+            for project in project_list:
+                data_project = { 'limits': {}, 'quotas': {} }
+
+                # Get absolute limits for project
+                limits = nova.limits.get(tenant_id=project.id).absolute
+                for limit in limits:
+                    data_project['limits'][limit.name] = limit.value
+
+                # Quotas for project
+                quotas = nova.quotas.get(project.id).to_dict()
+                del quotas['id']
+                data_project['quotas'] = quotas
+
+                data[self.prefix]["project-%s" % project.name] = data_project
+
+        # Hypervisor information
+        hypervisors = nova.hypervisors.list()
+        for hypervisor in hypervisors:
+            name = "hypervisor-%s" % hypervisor.hypervisor_hostname
+            data[self.prefix][name] = {}
+            for item in ('current_workload', 'disk_available_least', 'free_disk_gb', 'free_ram_mb',
+                    'hypervisor_version', 'memory_mb', 'memory_mb_used',
+                    'running_vms', 'vcpus', 'vcpus_used', 'local_gb', 'local_gb_used'):
+                data[self.prefix][name][item] = getattr(hypervisor, item)
+
+        return data
+
+    def _v2_get_stats(self):
         """Retrieves stats from nova"""
         keystone = self.get_keystone()
 
