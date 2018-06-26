@@ -42,7 +42,7 @@ class NovaPlugin(base.Base):
 
     def __init__(self):
         base.Base.__init__(self)
-        self.prefix = 'openstack-nova'
+        self.prefix = 'os_nova'
         self.keystone = None
         self.nova = None
 

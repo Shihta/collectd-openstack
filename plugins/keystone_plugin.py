@@ -39,7 +39,7 @@ class KeystonePlugin(base.Base):
 
     def __init__(self):
         base.Base.__init__(self)
-        self.prefix = 'openstack-keystone'
+        self.prefix = 'os_keystone'
         self.keystone = None
 
     def get_stats(self):
